@@ -1,6 +1,4 @@
-# Dependency Installation Test
-#
-# Tests Socket's BUILT-IN detection (no explicit package rules)
+# Socket Firewall (sfw) Install Test
 
 name: Dependency Install Test
 
@@ -11,9 +9,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Test npm audit built-in detection
-  npm-audit-detection:
-    name: npm audit Detection
+  # Test sfw blocking protestware
+  sfw-block-test:
+    name: SFW Block Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,26 +21,46 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Create package-lock.json
-        run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
+      - name: Install Socket Firewall
+        run: npm install -g sfw
       
-      - name: Run npm audit
+      - name: Clear npm cache (required for sfw interception)
+        run: npm cache clean --force
+      
+      - name: Test sfw with protestware package
         run: |
-          echo "=== Testing npm audit built-in detection ==="
+          echo "=== Socket Firewall Blocking Test ==="
           echo ""
-          echo "Dependencies in package.json:"
-          cat package.json | jq '.dependencies'
+          echo "package.json includes faker@6.6.6 (protestware)"
+          echo ""
+          echo "Running: sfw npm install"
           echo ""
           
-          echo "=== npm audit output ==="
-          npm audit 2>&1
+          sfw npm install 2>&1 | tee sfw-output.txt
+          SFW_EXIT=$?
           
           echo ""
-          echo "If npm audit exits with non-zero, it detected issues!"
+          echo "=== Exit code: $SFW_EXIT ==="
+          echo ""
+          
+          if [ $SFW_EXIT -ne 0 ]; then
+            echo "🚫 Socket Firewall BLOCKED the install (expected!)"
+            echo ""
+            echo "sfw successfully prevented protestware installation"
+            exit 1  # Fail the workflow to show it worked
+          else
+            echo "⚠️ sfw allowed the install"
+            echo "Checking if faker was actually blocked..."
+            if [ -d "node_modules/faker" ]; then
+              echo "❌ faker was installed - sfw did not block it"
+            else
+              echo "✅ faker was not installed"
+            fi
+          fi
 
-  # Test Socket CLI built-in detection
-  socket-cli-detection:
-    name: Socket CLI Detection
+  # Compare: npm install vs sfw npm install
+  comparison-test:
+    name: npm vs sfw Comparison
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,35 +70,43 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Create package-lock.json
-        run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
+      - name: Install Socket Firewall
+        run: npm install -g sfw
       
-      - name: Install and run Socket CLI
+      - name: Test 1 - Regular npm audit
         run: |
-          echo "=== Installing Socket CLI ==="
-          npm install -g @socketsecurity/cli || true
+          echo "=== Test 1: npm audit (detection only) ==="
+          npm install --package-lock-only --ignore-scripts 2>/dev/null || true
+          npm audit 2>&1 || true
+      
+      - name: Clear cache for sfw
+        run: npm cache clean --force
+      
+      - name: Test 2 - sfw npm install (blocking)
+        run: |
+          echo ""
+          echo "=== Test 2: sfw npm install (active blocking) ==="
+          sfw npm install 2>&1 || true
           
           echo ""
-          echo "=== Socket CLI scan ==="
-          npx @socketsecurity/cli npm audit 2>&1 || true
+          echo "=== Comparing results ==="
+          echo "npm audit: Detects but doesn't block"
+          echo "sfw npm install: Actively blocks bad packages"
 
-  # Summary job
+  # Summary
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [npm-audit-detection, socket-cli-detection]
+    needs: [sfw-block-test, comparison-test]
     if: always()
     steps:
       - name: Summary
         run: |
-          echo "=== Built-in Detection Test Summary ==="
+          echo "=== Socket Firewall (sfw) Test Summary ==="
           echo ""
-          echo "This test verifies Socket/npm detects faker@6.6.6 WITHOUT explicit rules"
+          echo "sfw-block-test: ${{ needs.sfw-block-test.result }}"
+          echo "comparison-test: ${{ needs.comparison-test.result }}"
           echo ""
-          echo "socket.yml contains:"
-          echo "  - issueRules with 'protestware: error'"
-          echo "  - NO deferredPackageRules (explicit blocking removed)"
-          echo ""
-          echo "Results:"
-          echo "  - npm-audit-detection: ${{ needs.npm-audit-detection.result }}"
-          echo "  - socket-cli-detection: ${{ needs.socket-cli-detection.result }}"
+          echo "Expected behavior:"
+          echo "- sfw npm install should BLOCK faker@6.6.6"
+          echo "- Regular npm install would allow it (then fail at runtime)"

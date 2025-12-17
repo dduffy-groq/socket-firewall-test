@@ -1,7 +1,4 @@
-# Socket Security Workflow (Free Tier)
-#
-# Tests Socket's built-in protestware detection
-# WITHOUT explicit package blocking rules
+# Socket Firewall (sfw) Security Check
 
 name: Socket Security
 
@@ -13,8 +10,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  socket-scan:
-    name: Socket Built-in Detection Test
+  sfw-scan:
+    name: Socket Firewall Scan
     runs-on: ubuntu-latest
     
     steps:
@@ -25,48 +22,47 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Display socket.yml configuration
+      - name: Install Socket Firewall
+        run: npm install -g sfw
+      
+      - name: Display configuration
         run: |
-          echo "=== Socket Configuration ==="
-          echo "Testing Socket's BUILT-IN detection (no explicit package rules)"
-          echo ""
+          echo "=== socket.yml ==="
           cat socket.yml
           echo ""
           echo "=== Dependencies ==="
           cat package.json | jq '.dependencies'
       
-      - name: Create package-lock.json
-        run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
+      - name: Clear npm cache
+        run: npm cache clean --force
       
-      - name: Test npm audit detection
+      - name: Test sfw install (expect failure)
+        id: sfw-test
         run: |
-          echo "=== npm audit (Socket's underlying detection) ==="
+          echo "=== Testing Socket Firewall on protestware ==="
           echo ""
-          npm audit 2>&1 || true
+          echo "Running: sfw npm install"
+          echo "Expected: Should BLOCK faker@6.6.6"
+          echo ""
           
-          echo ""
-          echo "=== npm audit --json ==="
-          npm audit --json 2>/dev/null | jq '.vulnerabilities // .advisories // "No JSON output"' || true
-      
-      - name: Test Socket CLI detection
-        run: |
-          echo "=== Installing Socket CLI ==="
-          npm install -g @socketsecurity/cli || true
+          if sfw npm install 2>&1 | tee sfw-output.txt; then
+            echo ""
+            echo "⚠️ sfw did not block - checking output..."
+            cat sfw-output.txt
+          else
+            echo ""
+            echo "✅ sfw blocked malicious packages as expected!"
+          fi
           
+          # Always show the output
           echo ""
-          echo "=== Socket CLI scan ==="
-          npx @socketsecurity/cli npm audit 2>&1 || true
+          echo "=== Full sfw output ==="
+          cat sfw-output.txt
       
-      - name: Summary
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
         if: always()
-        run: |
-          echo ""
-          echo "=== Test Summary ==="
-          echo ""
-          echo "This test checks if Socket detects faker@6.6.6 WITHOUT explicit blocking."
-          echo ""
-          echo "socket.yml has:"
-          echo "  - protestware: error (issue-based rule)"
-          echo "  - NO deferredPackageRules"
-          echo ""
-          echo "Expected: npm audit and/or Socket CLI should still detect faker as protestware"
+        with:
+          name: sfw-scan-output
+          path: sfw-output.txt
+          retention-days: 7

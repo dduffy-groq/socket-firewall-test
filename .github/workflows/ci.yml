@@ -1,4 +1,4 @@
-# CI Pipeline - Testing Socket's Built-in Detection
+# CI Pipeline with Socket Firewall (sfw)
 
 name: CI
 
@@ -9,9 +9,9 @@ on:
     branches: [main]
 
 jobs:
-  # Test Socket's built-in detection (no explicit package rules)
-  socket-detection:
-    name: Socket Built-in Detection
+  # Socket Firewall protected install
+  socket-protected-install:
+    name: Socket Firewall Install
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,52 +21,55 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Create package-lock.json
-        run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
+      - name: Install Socket Firewall (sfw)
+        run: npm install -g sfw
       
-      - name: Run npm audit
-        id: audit
+      - name: Clear npm cache (required for sfw to intercept)
+        run: npm cache clean --force
+      
+      - name: Display dependencies to install
         run: |
-          echo "=== Testing npm audit detection of faker@6.6.6 ==="
+          echo "=== package.json dependencies ==="
+          cat package.json | jq '.dependencies'
           echo ""
-          
-          # Run npm audit and capture exit code
-          npm audit 2>&1 | tee audit-output.txt
-          AUDIT_EXIT=${PIPESTATUS[0]}
-          
-          echo ""
-          echo "=== npm audit exit code: $AUDIT_EXIT ==="
-          
-          # Check if faker was detected
-          if grep -qi "faker" audit-output.txt; then
-            echo "✅ npm audit detected faker!"
-            grep -i "faker" audit-output.txt
-          else
-            echo "⚠️ npm audit did not mention faker"
-          fi
-          
-          # Fail if audit found issues
-          if [ $AUDIT_EXIT -ne 0 ]; then
-            echo ""
-            echo "🚫 npm audit found security issues"
-            exit 1
-          fi
-        continue-on-error: false
+          echo "=== socket.yml ==="
+          cat socket.yml
       
-      - name: Upload audit output
+      - name: Install with Socket Firewall protection
+        id: sfw-install
+        run: |
+          echo "=== Running: sfw npm install ==="
+          echo ""
+          echo "Socket Firewall will intercept and check each package..."
+          echo ""
+          
+          sfw npm install 2>&1 | tee sfw-output.txt
+          SFW_EXIT=$?
+          
+          echo ""
+          echo "=== sfw exit code: $SFW_EXIT ==="
+          
+          if [ $SFW_EXIT -ne 0 ]; then
+            echo "🚫 Socket Firewall blocked installation!"
+            exit 1
+          else
+            echo "✅ All dependencies passed Socket Firewall checks"
+          fi
+      
+      - name: Upload sfw output
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: npm-audit-output
-          path: audit-output.txt
+          name: sfw-install-output
+          path: sfw-output.txt
           retention-days: 7
 
-  # Build job - only runs if detection passes
+  # Build job - only runs if sfw install passes
   build:
     name: Build Artifact
     runs-on: ubuntu-latest
-    needs: socket-detection
-    if: ${{ always() && needs.socket-detection.result == 'success' }}
+    needs: socket-protected-install
+    if: ${{ always() && needs.socket-protected-install.result == 'success' }}
     
     steps:
       - uses: actions/checkout@v4
@@ -76,10 +79,12 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Install safe dependencies only
+      - name: Install sfw and dependencies
         run: |
-          npm install express@4.18.2 lodash@4.17.21 --ignore-scripts
-          npm install jest@29.7.0 --save-dev --ignore-scripts
+          npm install -g sfw
+          npm cache clean --force
+          sfw npm install express@4.18.2 lodash@4.17.21 --ignore-scripts
+          sfw npm install jest@29.7.0 --save-dev --ignore-scripts
       
       - name: Run build
         run: node src/build.js
@@ -106,8 +111,11 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Install safe dependencies
-        run: npm install express@4.18.2 lodash@4.17.21 --ignore-scripts
+      - name: Install sfw and safe dependencies
+        run: |
+          npm install -g sfw
+          npm cache clean --force
+          sfw npm install express@4.18.2 lodash@4.17.21 --ignore-scripts
       
       - name: Run tests
         run: node src/test.js
