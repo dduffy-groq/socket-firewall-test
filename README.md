@@ -1,57 +1,56 @@
 # Socket Firewall Test Repository
 
-⚠️ **WARNING: This repository intentionally contains protestware for testing purposes.**
+⚠️ **This repository intentionally contains problematic packages for testing purposes.**
 
-This is a test repository for [Socket Firewall Configurator](https://github.com/dduffy-groq/socket-firewall-configurator). It demonstrates how Socket security policies can detect and block malicious packages.
+## Test Results
 
-## Purpose
+### Socket Firewall (sfw) Free Tier
 
-This repo tests that Socket correctly:
-1. Detects known protestware packages
-2. Applies blocking rules from `socket.yml`
-3. Reports security issues in CI/CD
+| Package | sfw Blocks? | npm audit Detects? | Notes |
+|---------|-------------|-------------------|-------|
+| `faker@6.6.6` | ❌ No | ✅ Yes (high severity) | Protestware - not in sfw block list |
 
-## Intentionally Included Protestware
+**Key Finding**: The `sfw` free tier blocks truly malicious packages (malware, cryptominers, etc.) but may not block "protestware" like faker that only sabotages output rather than stealing data.
 
-| Package | Version | Status | Issue |
-|---------|---------|--------|-------|
-| `faker` | 6.6.6 | ⚠️ **STILL ON NPM** | Protestware - prints "LIBERTY" infinitely |
+### Detection Methods Comparison
 
-### Removed From NPM (for reference)
+| Method | What it does | faker@6.6.6 |
+|--------|--------------|-------------|
+| `sfw npm install` | Blocks malware at install time | ❌ Allows |
+| `npm audit` | Detects known vulnerabilities | ✅ Detects (GHSA-5w9c-rv96-fr7g) |
+| Socket GitHub App | Full Socket integration | ✅ Would detect/block |
 
-These packages were protestware but have been removed from npm:
+## Recommendations
 
-| Package | Version | Status |
-|---------|---------|--------|
-| `colors` | >=1.4.1 | ❌ Removed from npm |
-| `node-ipc` | 10.1.1-10.1.2 | ❌ Removed from npm |
+1. **Use `sfw` for malware protection** - Blocks truly dangerous packages
+2. **Use `npm audit` for CVE detection** - Catches more issues including protestware
+3. **Install Socket GitHub App** for full protection with `socket.yml` policy enforcement
 
-## Socket Configuration
+## Commands Used
 
-The `socket.yml` is configured to:
-- **ERROR (block)**: knownMalware, protestware, criticalCVE, highCVE
-- **WARN**: mediumCVE, deprecated, unmaintained
-- **IGNORE**: trivialPackage, floatingDependency
+```bash
+# Install sfw globally
+npm install -g sfw
 
-Specific package rules block the protestware:
-```yaml
-deferredPackageRules:
-  - name: "faker"
-    version: ">=6.6.6"
-    action: error
-    reason: "Protestware - intentionally corrupted"
+# Clear cache (required for sfw interception)
+npm cache clean --force
+
+# Install with Socket Firewall protection
+sfw npm install
+
+# Check for known vulnerabilities
+npm audit
 ```
 
-## Expected CI Behavior
+## Intentional Bad Package
 
-When GitHub Actions run:
-1. ❌ **Socket Security** - Fails (detects faker@6.6.6 as protestware)
-2. ❌ **CI** - Fails (security check blocks build)
-3. ❌ **Dependency Install Test** - Fails (policy enforcement)
-4. ✅ **Socket Firewall Configurator** - Passes (socket.yml is valid)
+- **faker@6.6.6** - Protestware that prints "LIBERTY" infinitely
+  - npm advisory: GHSA-5w9c-rv96-fr7g
+  - Severity: High
+  - Status: Still on npm (not removed)
 
 ## Related
 
+- [Socket Firewall Free Docs](https://docs.socket.dev/docs/socket-firewall-free)
 - [Socket Firewall Configurator](https://github.com/dduffy-groq/socket-firewall-configurator)
-- [Socket.dev](https://socket.dev)
 - [faker protestware incident](https://www.bleepingcomputer.com/news/security/dev-corrupts-npm-libs-colors-and-faker-breaking-thousands-of-apps/)
