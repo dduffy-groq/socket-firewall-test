@@ -26,5 +26,4 @@ jobs:
     with:
       enable_comments: true
       fail_on_error: true
-    secrets:
-      SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+    secrets: inherit
