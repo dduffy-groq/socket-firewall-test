@@ -1,4 +1,6 @@
-# Socket Firewall (sfw) Install Test
+# Dependency Install Test
+#
+# Tests Socket detection using the reusable workflow
 
 name: Dependency Install Test
 
@@ -9,104 +11,34 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Test sfw blocking protestware
-  sfw-block-test:
-    name: SFW Block Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install Socket Firewall
-        run: npm install -g sfw
-      
-      - name: Clear npm cache (required for sfw interception)
-        run: npm cache clean --force
-      
-      - name: Test sfw with protestware package
-        run: |
-          echo "=== Socket Firewall Blocking Test ==="
-          echo ""
-          echo "package.json includes faker@6.6.6 (protestware)"
-          echo ""
-          echo "Running: sfw npm install"
-          echo ""
-          
-          sfw npm install 2>&1 | tee sfw-output.txt
-          SFW_EXIT=$?
-          
-          echo ""
-          echo "=== Exit code: $SFW_EXIT ==="
-          echo ""
-          
-          if [ $SFW_EXIT -ne 0 ]; then
-            echo "🚫 Socket Firewall BLOCKED the install (expected!)"
-            echo ""
-            echo "sfw successfully prevented protestware installation"
-            exit 1  # Fail the workflow to show it worked
-          else
-            echo "⚠️ sfw allowed the install"
-            echo "Checking if faker was actually blocked..."
-            if [ -d "node_modules/faker" ]; then
-              echo "❌ faker was installed - sfw did not block it"
-            else
-              echo "✅ faker was not installed"
-            fi
-          fi
-
-  # Compare: npm install vs sfw npm install
-  comparison-test:
-    name: npm vs sfw Comparison
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install Socket Firewall
-        run: npm install -g sfw
-      
-      - name: Test 1 - Regular npm audit
-        run: |
-          echo "=== Test 1: npm audit (detection only) ==="
-          npm install --package-lock-only --ignore-scripts 2>/dev/null || true
-          npm audit 2>&1 || true
-      
-      - name: Clear cache for sfw
-        run: npm cache clean --force
-      
-      - name: Test 2 - sfw npm install (blocking)
-        run: |
-          echo ""
-          echo "=== Test 2: sfw npm install (active blocking) ==="
-          sfw npm install 2>&1 || true
-          
-          echo ""
-          echo "=== Comparing results ==="
-          echo "npm audit: Detects but doesn't block"
-          echo "sfw npm install: Actively blocks bad packages"
+  # Use the centralized Socket security workflow
+  socket-scan:
+    name: Socket Security (Centralized)
+    uses: dduffy-groq/socket-firewall-configurator/.github/workflows/socket-security-reusable.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    with:
+      enable_comments: true
+      fail_on_error: true
+    secrets:
+      SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 
   # Summary
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [sfw-block-test, comparison-test]
+    needs: socket-scan
     if: always()
     steps:
       - name: Summary
         run: |
-          echo "=== Socket Firewall (sfw) Test Summary ==="
+          echo "=== Socket Security Test Summary ==="
           echo ""
-          echo "sfw-block-test: ${{ needs.sfw-block-test.result }}"
-          echo "comparison-test: ${{ needs.comparison-test.result }}"
+          echo "socket-scan: ${{ needs.socket-scan.result }}"
           echo ""
-          echo "Expected behavior:"
-          echo "- sfw npm install should BLOCK faker@6.6.6"
-          echo "- Regular npm install would allow it (then fail at runtime)"
+          echo "This test uses the centralized Socket security workflow"
+          echo "from socket-firewall-configurator."
+          echo ""
+          echo "Expected: Should detect faker@6.6.6 protestware"

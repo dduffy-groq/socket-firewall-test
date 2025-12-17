@@ -1,68 +1,30 @@
-# Socket Firewall (sfw) Security Check
+# Socket Security Check
+#
+# Uses the reusable workflow from socket-firewall-configurator
 
 name: Socket Security
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'socket.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 jobs:
-  sfw-scan:
-    name: Socket Firewall Scan
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install Socket Firewall
-        run: npm install -g sfw
-      
-      - name: Display configuration
-        run: |
-          echo "=== socket.yml ==="
-          cat socket.yml
-          echo ""
-          echo "=== Dependencies ==="
-          cat package.json | jq '.dependencies'
-      
-      - name: Clear npm cache
-        run: npm cache clean --force
-      
-      - name: Test sfw install (expect failure)
-        id: sfw-test
-        run: |
-          echo "=== Testing Socket Firewall on protestware ==="
-          echo ""
-          echo "Running: sfw npm install"
-          echo "Expected: Should BLOCK faker@6.6.6"
-          echo ""
-          
-          if sfw npm install 2>&1 | tee sfw-output.txt; then
-            echo ""
-            echo "⚠️ sfw did not block - checking output..."
-            cat sfw-output.txt
-          else
-            echo ""
-            echo "✅ sfw blocked malicious packages as expected!"
-          fi
-          
-          # Always show the output
-          echo ""
-          echo "=== Full sfw output ==="
-          cat sfw-output.txt
-      
-      - name: Upload scan results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sfw-scan-output
-          path: sfw-output.txt
-          retention-days: 7
+  socket-security:
+    name: Socket Security Scan
+    uses: dduffy-groq/socket-firewall-configurator/.github/workflows/socket-security-reusable.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    with:
+      enable_comments: true
+      fail_on_error: true
+    secrets:
+      SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
