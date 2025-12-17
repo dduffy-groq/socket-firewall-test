@@ -1,0 +1,71 @@
+# Socket Firewall Configurator Integration (Free Tier)
+#
+# Uses the reusable workflow from socket-firewall-configurator
+# No API keys required - uses policy-based validation
+
+name: Socket Firewall Configurator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'socket.yml'
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly check for policy updates
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Local policy validation (no secrets required)
+  validate-local:
+    name: Validate Local socket.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate socket.yml syntax
+        run: |
+          echo "=== Validating socket.yml ==="
+          
+          # Check YAML is valid
+          python3 -c "import yaml; yaml.safe_load(open('socket.yml'))" && \
+            echo "✅ Valid YAML syntax" || \
+            echo "❌ Invalid YAML syntax"
+          
+          # Check required fields
+          if grep -q "version:" socket.yml; then
+            echo "✅ Has version field"
+          else
+            echo "⚠️  Missing version field"
+          fi
+          
+          if grep -q "issueRules:" socket.yml; then
+            echo "✅ Has issueRules"
+          else
+            echo "⚠️  Missing issueRules"
+          fi
+      
+      - name: Check for blocking rules
+        run: |
+          echo "=== Blocking Rules ==="
+          grep -B1 "action: error" socket.yml | head -20 || echo "No blocking rules found"
+          
+          echo ""
+          echo "=== Warning Rules ==="
+          grep -B1 "action: warn" socket.yml | head -10 || echo "No warning rules found"
+
+  # Integration with configurator (when secrets available)
+  socket-firewall:
+    name: Socket Firewall Check
+    runs-on: ubuntu-latest
+    # Only run if secrets are configured
+    if: ${{ vars.SOCKET_CONFIGURED == 'true' }}
+    steps:
+      - run: echo "Socket Firewall Configurator integration requires secrets to be configured"

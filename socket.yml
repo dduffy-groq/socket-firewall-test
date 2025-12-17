@@ -1,0 +1,59 @@
+# Socket Security Configuration
+# This config is set to BLOCK protestware and known malicious packages
+
+version: 2
+enabled: true
+projectName: "socket-firewall-test"
+
+issueRules:
+  # BLOCK - Critical security issues
+  knownMalware: error
+  criticalCVE: error
+  highCVE: error
+  protestware: error
+  potentialTyposquat: error
+  
+  # BLOCK - Supply chain risks  
+  installScripts: error
+  obfuscatedCode: error
+  highEntropyStrings: error
+  
+  # WARN - Medium risks
+  mediumCVE: warn
+  lowCVE: warn
+  deprecated: warn
+  unmaintained: warn
+  shellAccess: warn
+  networkAccess: warn
+  
+  # IGNORE - Informational
+  trivialPackage: ignore
+  floatingDependency: ignore
+
+# Explicitly block known protestware packages
+deferredPackageRules:
+  - name: "colors"
+    version: ">=1.4.1"
+    action: error
+    reason: "Protestware - intentionally corrupted with infinite loop in these versions"
+  
+  - name: "faker"
+    version: ">=6.6.6"
+    action: error
+    reason: "Protestware - intentionally corrupted and unpublished by author"
+  
+  - name: "node-ipc"
+    version: ">=10.1.1 <10.1.3"
+    action: error
+    reason: "Protestware - contained malicious code targeting Russian IPs"
+  
+  - name: "event-stream"
+    version: "3.3.6"
+    action: error
+    reason: "Supply chain attack - contained bitcoin-stealing malware"
+
+ignore:
+  - "**/node_modules/**"
+  - "**/test/**"
+  - "**/*.test.js"
+
