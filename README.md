@@ -1,8 +1,8 @@
 # Socket Firewall Test Repository
 
-⚠️ **WARNING: This repository intentionally contains protestware dependencies for testing purposes.**
+⚠️ **WARNING: This repository intentionally contains protestware for testing purposes.**
 
-This is a test repository for [Socket Firewall Configurator](https://github.com/dduffy-groq/socket-firewall-configurator). It demonstrates how Socket security policies can detect and block malicious or protestware packages.
+This is a test repository for [Socket Firewall Configurator](https://github.com/dduffy-groq/socket-firewall-configurator). It demonstrates how Socket security policies can detect and block malicious packages.
 
 ## Purpose
 
@@ -13,12 +13,18 @@ This repo tests that Socket correctly:
 
 ## Intentionally Included Protestware
 
-| Package | Version | Issue |
-|---------|---------|-------|
-| `colors` | 1.4.1 | Protestware - infinite loop added by author |
-| `faker` | 6.6.6 | Protestware - corrupted and unpublished by author |
+| Package | Version | Status | Issue |
+|---------|---------|--------|-------|
+| `faker` | 6.6.6 | ⚠️ **STILL ON NPM** | Protestware - prints "LIBERTY" infinitely |
 
-**DO NOT** actually install these packages. They are listed in `package.json` only to test Socket detection.
+### Removed From NPM (for reference)
+
+These packages were protestware but have been removed from npm:
+
+| Package | Version | Status |
+|---------|---------|--------|
+| `colors` | >=1.4.1 | ❌ Removed from npm |
+| `node-ipc` | 10.1.1-10.1.2 | ❌ Removed from npm |
 
 ## Socket Configuration
 
@@ -30,8 +36,8 @@ The `socket.yml` is configured to:
 Specific package rules block the protestware:
 ```yaml
 deferredPackageRules:
-  - name: "colors"
-    version: ">=1.4.1"
+  - name: "faker"
+    version: ">=6.6.6"
     action: error
     reason: "Protestware - intentionally corrupted"
 ```
@@ -39,12 +45,13 @@ deferredPackageRules:
 ## Expected CI Behavior
 
 When GitHub Actions run:
-1. ✅ Socket Security job should detect the protestware
-2. ⚠️ Build job may fail or warn about blocked packages
-3. 📊 Security report artifact should list the issues
+1. ❌ **Socket Security** - Fails (detects faker@6.6.6 as protestware)
+2. ❌ **CI** - Fails (security check blocks build)
+3. ❌ **Dependency Install Test** - Fails (policy enforcement)
+4. ✅ **Socket Firewall Configurator** - Passes (socket.yml is valid)
 
 ## Related
 
 - [Socket Firewall Configurator](https://github.com/dduffy-groq/socket-firewall-configurator)
 - [Socket.dev](https://socket.dev)
-
+- [faker protestware incident](https://www.bleepingcomputer.com/news/security/dev-corrupts-npm-libs-colors-and-faker-breaking-thousands-of-apps/)

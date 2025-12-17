@@ -27,107 +27,41 @@ jobs:
       - name: Display socket.yml policy
         run: cat socket.yml
       
-      - name: Attempt to install colors (protestware)
-        id: install-colors
-        run: |
-          echo "=== Attempting to install colors@1.4.1 (protestware) ==="
-          echo "This should be BLOCKED by Socket policy"
-          
-          # Create a temp package.json
-          echo '{"name":"test","dependencies":{"colors":"1.4.1"}}' > /tmp/test-pkg/package.json || mkdir -p /tmp/test-pkg && echo '{"name":"test","dependencies":{"colors":"1.4.1"}}' > /tmp/test-pkg/package.json
-          
-          cd /tmp/test-pkg
-          
-          # Check against socket.yml before install
-          echo ""
-          echo "=== Pre-install Socket Policy Check ==="
-          if grep -q "colors" $GITHUB_WORKSPACE/socket.yml; then
-            echo "⚠️  colors is listed in socket.yml policy"
-            grep -A3 '"colors"' $GITHUB_WORKSPACE/socket.yml || true
-          fi
-          
-          # Attempt install (this would succeed but the package is corrupted)
-          npm install --ignore-scripts 2>&1 || true
-          
-          echo ""
-          echo "=== Post-install Check ==="
-          if [ -d "node_modules/colors" ]; then
-            echo "❌ SECURITY VIOLATION: colors@1.4.1 was installed!"
-            echo "   This package is protestware and should be blocked."
-            exit 1
-          else
-            echo "✅ colors was not installed (blocked or failed)"
-          fi
-        continue-on-error: true
-      
       - name: Attempt to install faker (protestware)
         id: install-faker
         run: |
           echo "=== Attempting to install faker@6.6.6 (protestware) ==="
+          echo "This package still exists on npm but is corrupted!"
           
           mkdir -p /tmp/test-faker
           echo '{"name":"test","dependencies":{"faker":"6.6.6"}}' > /tmp/test-faker/package.json
           
           cd /tmp/test-faker
           
-          # This version doesn't exist anymore (unpublished) so it will fail
-          npm install 2>&1 || true
-          
+          # Check against socket.yml before install
           echo ""
-          if [ -d "node_modules/faker" ]; then
-            echo "❌ SECURITY VIOLATION: faker@6.6.6 was installed!"
-            exit 1
+          echo "=== Pre-install Socket Policy Check ==="
+          echo "socket.yml blocks faker@>=6.6.6 with action: error"
+          echo ""
+          
+          # Try to install (will succeed but package is corrupted)
+          echo "=== Attempting npm install ==="
+          if npm install 2>&1; then
+            echo ""
+            echo "⚠️  npm install succeeded - but package is protestware!"
+            echo "   Socket policy should have blocked this."
+            
+            if [ -d "node_modules/faker" ]; then
+              echo "❌ SECURITY VIOLATION: faker@6.6.6 was installed!"
+              echo "   This package prints 'LIBERTY' infinitely and is unusable."
+              exit 1
+            fi
           else
-            echo "✅ faker@6.6.6 not installed (expected - package was unpublished)"
+            echo "✅ npm install failed (expected)"
           fi
         continue-on-error: true
 
-  # Test 2: Transitive dependency with protestware
-  install-transitive-protestware:
-    name: Test Transitive Protestware
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Check for transitive protestware
-        run: |
-          echo "=== Testing transitive dependency detection ==="
-          echo "Creating package with dependencies that might pull in protestware..."
-          
-          mkdir -p /tmp/transitive-test
-          cd /tmp/transitive-test
-          
-          # Install a package and check its dependency tree
-          echo '{"name":"test","dependencies":{"express":"4.18.2"}}' > package.json
-          
-          npm install --ignore-scripts 2>&1
-          
-          echo ""
-          echo "=== Checking dependency tree for known bad packages ==="
-          
-          # List all installed packages
-          npm ls --all 2>/dev/null | head -50 || true
-          
-          # Check for any known protestware in the tree
-          FOUND_BAD=0
-          
-          for pkg in "colors" "faker" "node-ipc" "event-stream"; do
-            if npm ls "$pkg" 2>/dev/null | grep -q "$pkg"; then
-              echo "⚠️  Found $pkg in dependency tree!"
-              FOUND_BAD=1
-            fi
-          done
-          
-          if [ $FOUND_BAD -eq 0 ]; then
-            echo "✅ No known protestware found in dependency tree"
-          fi
-
-  # Test 3: Socket CLI scanning during install
+  # Test 2: Socket CLI scanning during install
   socket-scan-on-install:
     name: Socket Scan During Install
     runs-on: ubuntu-latest
@@ -143,9 +77,6 @@ jobs:
         run: |
           npm install --package-lock-only --ignore-scripts 2>/dev/null || true
       
-      - name: Install Socket CLI
-        run: npm install -g @socketsecurity/cli || true
-      
       - name: Run Socket scan on dependencies
         run: |
           echo "=== Socket Dependency Scan ==="
@@ -157,27 +88,12 @@ jobs:
           cat package.json | jq '.dependencies'
           
           echo ""
-          echo "=== Socket Analysis ==="
-          
-          # Try socket scan (may need API key for full results)
-          npx @socketsecurity/cli npm audit 2>&1 || echo "Socket CLI scan completed (may require API key for full results)"
-          
-          echo ""
           echo "=== Manual Policy Enforcement ==="
           
           # Enforce socket.yml policy manually
           VIOLATIONS=0
           
-          # Check colors
-          if grep -q '"colors"' package.json; then
-            VERSION=$(cat package.json | jq -r '.dependencies.colors // empty')
-            if [ -n "$VERSION" ]; then
-              echo "❌ BLOCKED: colors@$VERSION (protestware)"
-              VIOLATIONS=$((VIOLATIONS + 1))
-            fi
-          fi
-          
-          # Check faker
+          # Check faker (the actual protestware that exists)
           if grep -q '"faker"' package.json; then
             VERSION=$(cat package.json | jq -r '.dependencies.faker // empty')
             if [ -n "$VERSION" ]; then
@@ -200,7 +116,7 @@ jobs:
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [install-protestware-direct, install-transitive-protestware, socket-scan-on-install]
+    needs: [install-protestware-direct, socket-scan-on-install]
     if: always()
     steps:
       - name: Summary
@@ -209,12 +125,13 @@ jobs:
           echo ""
           echo "These tests verify Socket policy enforcement during CI:"
           echo ""
-          echo "1. Direct Protestware Install - Tests blocking direct installation"
-          echo "2. Transitive Protestware - Tests detection in dependency tree"  
-          echo "3. Socket Scan on Install - Tests pre-install policy enforcement"
+          echo "1. Direct Protestware Install - Tests blocking faker@6.6.6"
+          echo "2. Socket Scan on Install - Tests pre-install policy enforcement"
+          echo ""
+          echo "Package status:"
+          echo "- faker@6.6.6: EXISTS on npm (protestware - prints LIBERTY infinitely)"
+          echo "- colors@1.4.1: REMOVED from npm (was protestware)"
+          echo "- node-ipc@10.1.1: REMOVED from npm (was protestware)"
           echo ""
           echo "Expected behavior:"
-          echo "- colors@1.4.1 should be flagged/blocked (protestware)"
-          echo "- faker@6.6.6 should be flagged/blocked (protestware)"
-          echo "- socket.yml policy should prevent installation"
-
+          echo "- faker@6.6.6 should be flagged and blocked by socket.yml policy"

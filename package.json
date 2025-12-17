@@ -9,7 +9,6 @@
     "test": "node src/test.js"
   },
   "dependencies": {
-    "colors": "1.4.1",
     "faker": "6.6.6",
     "express": "4.18.2",
     "lodash": "4.17.21"
@@ -19,6 +18,9 @@
   },
   "keywords": ["test", "socket", "security"],
   "author": "Test",
-  "license": "MIT"
+  "license": "MIT",
+  "comments": {
+    "security-test": "faker@6.6.6 is protestware - intentionally included to test Socket detection",
+    "removed-packages": "colors@1.4.1 and node-ipc@10.1.1 were removed from npm registry"
+  }
 }
-

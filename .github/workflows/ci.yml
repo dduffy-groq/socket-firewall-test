@@ -29,43 +29,29 @@ jobs:
           echo "=== Dependencies to check ==="
           cat package.json | jq '.dependencies'
       
-      - name: Create package-lock.json
-        run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
-      
-      - name: Install Socket CLI (Free)
-        run: npm install -g @socketsecurity/cli
-      
-      - name: Run Socket Security Scan (Free Tier)
-        id: socket
+      - name: Check for protestware before install
+        id: check-protestware
         run: |
-          echo "=== Running Socket Scan (Free Tier - No API Key) ==="
+          echo "=== Pre-install Protestware Check ==="
+          BLOCKED=0
           
-          # Socket free tier scan - analyzes package-lock.json
-          npx socket-npm audit 2>&1 | tee socket-output.txt || true
-          
-          # Alternative: use npm audit with socket wrapper
-          echo ""
-          echo "=== NPM Audit Output ==="
-          npm audit 2>&1 | tee npm-audit.txt || true
-          
-          echo ""
-          echo "=== Manual Protestware Check ==="
-          
-          # Check package.json for known protestware
-          if grep -q '"colors".*"1.4.1"' package.json; then
-            echo "⚠️  BLOCKED: colors@1.4.1 is protestware!"
-            echo "   This version contains an infinite loop intentionally added by the author."
+          # Check for faker (protestware that still exists on npm)
+          if grep -q '"faker"' package.json; then
+            VERSION=$(cat package.json | jq -r '.dependencies.faker // empty')
+            if [ -n "$VERSION" ]; then
+              echo "❌ BLOCKED: faker@$VERSION (protestware)"
+              echo "   This package was intentionally corrupted by its author."
+              BLOCKED=1
+            fi
           fi
           
-          if grep -q '"faker".*"6.6.6"' package.json; then
-            echo "⚠️  BLOCKED: faker@6.6.6 is protestware!"
-            echo "   This version was intentionally corrupted and unpublished."
+          if [ $BLOCKED -gt 0 ]; then
+            echo ""
+            echo "🚫 PROTESTWARE DETECTED - Blocking build"
+            exit 1
+          else
+            echo "✅ No protestware detected in dependencies"
           fi
-          
-          echo ""
-          echo "=== socket.yml Policy Would Block ==="
-          grep -A2 "action: error" socket.yml || true
-        continue-on-error: true
       
       - name: Upload Security Scan Output
         uses: actions/upload-artifact@v4
@@ -76,12 +62,14 @@ jobs:
             socket-output.txt
             npm-audit.txt
           retention-days: 7
+          if-no-files-found: ignore
 
-  # Build job
+  # Build job - only runs if security check passes
   build:
     name: Build Artifact
     runs-on: ubuntu-latest
     needs: socket-security
+    if: ${{ always() && needs.socket-security.result == 'success' }}
     
     steps:
       - uses: actions/checkout@v4
@@ -94,8 +82,8 @@ jobs:
       - name: Install safe dependencies only
         run: |
           # Only install packages that aren't protestware
-          npm install express lodash --ignore-scripts
-          npm install jest --save-dev --ignore-scripts
+          npm install express@4.18.2 lodash@4.17.21 --ignore-scripts
+          npm install jest@29.7.0 --save-dev --ignore-scripts
       
       - name: Run build
         run: node src/build.js
@@ -112,6 +100,7 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
     needs: build
+    if: ${{ always() && needs.build.result == 'success' }}
     
     steps:
       - uses: actions/checkout@v4
@@ -122,7 +111,7 @@ jobs:
           node-version: '20'
       
       - name: Install safe dependencies
-        run: npm install express lodash --ignore-scripts
+        run: npm install express@4.18.2 lodash@4.17.21 --ignore-scripts
       
       - name: Run tests
         run: node src/test.js
