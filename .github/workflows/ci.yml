@@ -1,4 +1,4 @@
-# CI Pipeline with Socket Security Check (Free Tier)
+# CI Pipeline - Testing Socket's Built-in Detection
 
 name: CI
 
@@ -9,9 +9,9 @@ on:
     branches: [main]
 
 jobs:
-  # Socket Security Check - uses free tier (no API key required)
-  socket-security:
-    name: Socket Security Scan
+  # Test Socket's built-in detection (no explicit package rules)
+  socket-detection:
+    name: Socket Built-in Detection
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,55 +21,52 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Display Socket Policy
+      - name: Create package-lock.json
+        run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
+      
+      - name: Run npm audit
+        id: audit
         run: |
-          echo "=== socket.yml configuration ==="
-          cat socket.yml
+          echo "=== Testing npm audit detection of faker@6.6.6 ==="
           echo ""
-          echo "=== Dependencies to check ==="
-          cat package.json | jq '.dependencies'
-      
-      - name: Check for protestware before install
-        id: check-protestware
-        run: |
-          echo "=== Pre-install Protestware Check ==="
-          BLOCKED=0
           
-          # Check for faker (protestware that still exists on npm)
-          if grep -q '"faker"' package.json; then
-            VERSION=$(cat package.json | jq -r '.dependencies.faker // empty')
-            if [ -n "$VERSION" ]; then
-              echo "❌ BLOCKED: faker@$VERSION (protestware)"
-              echo "   This package was intentionally corrupted by its author."
-              BLOCKED=1
-            fi
-          fi
+          # Run npm audit and capture exit code
+          npm audit 2>&1 | tee audit-output.txt
+          AUDIT_EXIT=${PIPESTATUS[0]}
           
-          if [ $BLOCKED -gt 0 ]; then
-            echo ""
-            echo "🚫 PROTESTWARE DETECTED - Blocking build"
-            exit 1
+          echo ""
+          echo "=== npm audit exit code: $AUDIT_EXIT ==="
+          
+          # Check if faker was detected
+          if grep -qi "faker" audit-output.txt; then
+            echo "✅ npm audit detected faker!"
+            grep -i "faker" audit-output.txt
           else
-            echo "✅ No protestware detected in dependencies"
+            echo "⚠️ npm audit did not mention faker"
           fi
+          
+          # Fail if audit found issues
+          if [ $AUDIT_EXIT -ne 0 ]; then
+            echo ""
+            echo "🚫 npm audit found security issues"
+            exit 1
+          fi
+        continue-on-error: false
       
-      - name: Upload Security Scan Output
+      - name: Upload audit output
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: socket-scan-output
-          path: |
-            socket-output.txt
-            npm-audit.txt
+          name: npm-audit-output
+          path: audit-output.txt
           retention-days: 7
-          if-no-files-found: ignore
 
-  # Build job - only runs if security check passes
+  # Build job - only runs if detection passes
   build:
     name: Build Artifact
     runs-on: ubuntu-latest
-    needs: socket-security
-    if: ${{ always() && needs.socket-security.result == 'success' }}
+    needs: socket-detection
+    if: ${{ always() && needs.socket-detection.result == 'success' }}
     
     steps:
       - uses: actions/checkout@v4
@@ -81,7 +78,6 @@ jobs:
       
       - name: Install safe dependencies only
         run: |
-          # Only install packages that aren't protestware
           npm install express@4.18.2 lodash@4.17.21 --ignore-scripts
           npm install jest@29.7.0 --save-dev --ignore-scripts
       

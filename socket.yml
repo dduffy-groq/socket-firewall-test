@@ -1,10 +1,11 @@
 # Socket Security Configuration
-# This config is set to BLOCK protestware and known malicious packages
+# Testing Socket's built-in detection WITHOUT explicit package rules
 
 version: 2
 enabled: true
 projectName: "socket-firewall-test"
 
+# Issue-based rules only - no explicit package blocking
 issueRules:
   # BLOCK - Critical security issues
   knownMalware: error
@@ -30,29 +31,8 @@ issueRules:
   trivialPackage: ignore
   floatingDependency: ignore
 
-# Explicitly block known protestware packages
-deferredPackageRules:
-  # ACTIVE PROTESTWARE (still on npm)
-  - name: "faker"
-    version: ">=6.6.6"
-    action: error
-    reason: "Protestware - intentionally corrupted and released by author as protest"
-  
-  # REMOVED FROM NPM (kept for documentation)
-  - name: "colors"
-    version: ">=1.4.1"
-    action: error
-    reason: "Protestware - removed from npm, was corrupted with infinite loop"
-  
-  - name: "node-ipc"
-    version: ">=10.1.1 <10.1.3"
-    action: error
-    reason: "Protestware - removed from npm, contained malicious code"
-  
-  - name: "event-stream"
-    version: "3.3.6"
-    action: error
-    reason: "Supply chain attack - contained bitcoin-stealing malware"
+# NO explicit package rules - testing Socket's built-in detection
+# deferredPackageRules: []
 
 ignore:
   - "**/node_modules/**"

@@ -1,24 +1,20 @@
 # Socket Security Workflow (Free Tier)
 #
-# Uses Socket's free tier - no API key required
-# Validates dependencies against socket.yml policy
+# Tests Socket's built-in protestware detection
+# WITHOUT explicit package blocking rules
 
 name: Socket Security
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'socket.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 jobs:
   socket-scan:
-    name: Socket Dependency Scan (Free)
+    name: Socket Built-in Detection Test
     runs-on: ubuntu-latest
     
     steps:
@@ -32,61 +28,45 @@ jobs:
       - name: Display socket.yml configuration
         run: |
           echo "=== Socket Configuration ==="
+          echo "Testing Socket's BUILT-IN detection (no explicit package rules)"
+          echo ""
           cat socket.yml
           echo ""
-          echo "=== Expected Blocks (from socket.yml) ==="
-          echo "- faker@>=6.6.6 (protestware - STILL ON NPM)"
-          echo ""
-          echo "Note: colors@1.4.1 and node-ipc@10.1.1 were removed from npm"
-          echo ""
+          echo "=== Dependencies ==="
+          cat package.json | jq '.dependencies'
       
       - name: Create package-lock.json
         run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
       
-      - name: Validate Against socket.yml Policy
-        id: validate
+      - name: Test npm audit detection
         run: |
-          echo "=== Validating dependencies against socket.yml policy ==="
-          
-          BLOCKED=0
-          
-          # Check for faker protestware (STILL EXISTS ON NPM)
-          if grep -q '"faker"' package.json; then
-            VERSION=$(cat package.json | jq -r '.dependencies.faker // .devDependencies.faker // empty')
-            if [ -n "$VERSION" ]; then
-              echo "❌ POLICY VIOLATION: faker@$VERSION"
-              echo "   Rule: action=error, reason='Protestware - intentionally corrupted'"
-              echo "   Note: This package still exists on npm and is dangerous!"
-              BLOCKED=1
-            fi
-          fi
+          echo "=== npm audit (Socket's underlying detection) ==="
+          echo ""
+          npm audit 2>&1 || true
           
           echo ""
-          if [ $BLOCKED -gt 0 ]; then
-            echo "🚫 SOCKET POLICY CHECK FAILED"
-            echo "   Blocked packages detected in package.json"
-            echo "   These packages are marked as 'error' in socket.yml"
-            exit 1
-          else
-            echo "✅ SOCKET POLICY CHECK PASSED"
-            echo "   No blocked packages detected"
-          fi
+          echo "=== npm audit --json ==="
+          npm audit --json 2>/dev/null | jq '.vulnerabilities // .advisories // "No JSON output"' || true
       
-      - name: Run npm audit
-        if: always()
+      - name: Test Socket CLI detection
         run: |
-          echo "=== npm audit results ==="
-          npm audit 2>&1 || true
+          echo "=== Installing Socket CLI ==="
+          npm install -g @socketsecurity/cli || true
+          
+          echo ""
+          echo "=== Socket CLI scan ==="
+          npx @socketsecurity/cli npm audit 2>&1 || true
       
       - name: Summary
         if: always()
         run: |
           echo ""
-          echo "=== Summary ==="
-          echo "This test repo intentionally includes protestware to verify detection."
+          echo "=== Test Summary ==="
           echo ""
-          echo "Active protestware in this repo:"
-          echo "- faker@6.6.6 (protestware - still on npm!)"
+          echo "This test checks if Socket detects faker@6.6.6 WITHOUT explicit blocking."
           echo ""
-          echo "For full Socket features, install the Socket GitHub App:"
-          echo "https://github.com/apps/socket-security"
+          echo "socket.yml has:"
+          echo "  - protestware: error (issue-based rule)"
+          echo "  - NO deferredPackageRules"
+          echo ""
+          echo "Expected: npm audit and/or Socket CLI should still detect faker as protestware"

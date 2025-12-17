@@ -1,7 +1,6 @@
 # Dependency Installation Test
 #
-# Tests Socket detection when protestware is installed during CI
-# This simulates a build process that pulls in bad dependencies
+# Tests Socket's BUILT-IN detection (no explicit package rules)
 
 name: Dependency Install Test
 
@@ -12,9 +11,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Test 1: Direct protestware installation attempt
-  install-protestware-direct:
-    name: Test Direct Protestware Install
+  # Test npm audit built-in detection
+  npm-audit-detection:
+    name: npm audit Detection
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,114 +23,64 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Display socket.yml policy
-        run: cat socket.yml
+      - name: Create package-lock.json
+        run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
       
-      - name: Attempt to install faker (protestware)
-        id: install-faker
+      - name: Run npm audit
         run: |
-          echo "=== Attempting to install faker@6.6.6 (protestware) ==="
-          echo "This package still exists on npm but is corrupted!"
-          
-          mkdir -p /tmp/test-faker
-          echo '{"name":"test","dependencies":{"faker":"6.6.6"}}' > /tmp/test-faker/package.json
-          
-          cd /tmp/test-faker
-          
-          # Check against socket.yml before install
+          echo "=== Testing npm audit built-in detection ==="
           echo ""
-          echo "=== Pre-install Socket Policy Check ==="
-          echo "socket.yml blocks faker@>=6.6.6 with action: error"
-          echo ""
-          
-          # Try to install (will succeed but package is corrupted)
-          echo "=== Attempting npm install ==="
-          if npm install 2>&1; then
-            echo ""
-            echo "⚠️  npm install succeeded - but package is protestware!"
-            echo "   Socket policy should have blocked this."
-            
-            if [ -d "node_modules/faker" ]; then
-              echo "❌ SECURITY VIOLATION: faker@6.6.6 was installed!"
-              echo "   This package prints 'LIBERTY' infinitely and is unusable."
-              exit 1
-            fi
-          else
-            echo "✅ npm install failed (expected)"
-          fi
-        continue-on-error: true
-
-  # Test 2: Socket CLI scanning during install
-  socket-scan-on-install:
-    name: Socket Scan During Install
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Create package-lock for scanning
-        run: |
-          npm install --package-lock-only --ignore-scripts 2>/dev/null || true
-      
-      - name: Run Socket scan on dependencies
-        run: |
-          echo "=== Socket Dependency Scan ==="
-          echo ""
-          echo "Scanning package.json dependencies..."
-          echo ""
-          
-          # Show what we're scanning
+          echo "Dependencies in package.json:"
           cat package.json | jq '.dependencies'
+          echo ""
+          
+          echo "=== npm audit output ==="
+          npm audit 2>&1
           
           echo ""
-          echo "=== Manual Policy Enforcement ==="
-          
-          # Enforce socket.yml policy manually
-          VIOLATIONS=0
-          
-          # Check faker (the actual protestware that exists)
-          if grep -q '"faker"' package.json; then
-            VERSION=$(cat package.json | jq -r '.dependencies.faker // empty')
-            if [ -n "$VERSION" ]; then
-              echo "❌ BLOCKED: faker@$VERSION (protestware)"
-              VIOLATIONS=$((VIOLATIONS + 1))
-            fi
-          fi
+          echo "If npm audit exits with non-zero, it detected issues!"
+
+  # Test Socket CLI built-in detection
+  socket-cli-detection:
+    name: Socket CLI Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Create package-lock.json
+        run: npm install --package-lock-only --ignore-scripts 2>/dev/null || true
+      
+      - name: Install and run Socket CLI
+        run: |
+          echo "=== Installing Socket CLI ==="
+          npm install -g @socketsecurity/cli || true
           
           echo ""
-          if [ $VIOLATIONS -gt 0 ]; then
-            echo "🚫 Found $VIOLATIONS policy violations!"
-            echo "   These dependencies violate socket.yml policy."
-            exit 1
-          else
-            echo "✅ No policy violations in direct dependencies"
-          fi
-        continue-on-error: false
+          echo "=== Socket CLI scan ==="
+          npx @socketsecurity/cli npm audit 2>&1 || true
 
   # Summary job
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [install-protestware-direct, socket-scan-on-install]
+    needs: [npm-audit-detection, socket-cli-detection]
     if: always()
     steps:
       - name: Summary
         run: |
-          echo "=== Dependency Screening Test Summary ==="
+          echo "=== Built-in Detection Test Summary ==="
           echo ""
-          echo "These tests verify Socket policy enforcement during CI:"
+          echo "This test verifies Socket/npm detects faker@6.6.6 WITHOUT explicit rules"
           echo ""
-          echo "1. Direct Protestware Install - Tests blocking faker@6.6.6"
-          echo "2. Socket Scan on Install - Tests pre-install policy enforcement"
+          echo "socket.yml contains:"
+          echo "  - issueRules with 'protestware: error'"
+          echo "  - NO deferredPackageRules (explicit blocking removed)"
           echo ""
-          echo "Package status:"
-          echo "- faker@6.6.6: EXISTS on npm (protestware - prints LIBERTY infinitely)"
-          echo "- colors@1.4.1: REMOVED from npm (was protestware)"
-          echo "- node-ipc@10.1.1: REMOVED from npm (was protestware)"
-          echo ""
-          echo "Expected behavior:"
-          echo "- faker@6.6.6 should be flagged and blocked by socket.yml policy"
+          echo "Results:"
+          echo "  - npm-audit-detection: ${{ needs.npm-audit-detection.result }}"
+          echo "  - socket-cli-detection: ${{ needs.socket-cli-detection.result }}"
